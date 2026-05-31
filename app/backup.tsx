@@ -7,177 +7,111 @@ export default function CleanAgentUI() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [agentState, setAgentState] = useState<'offline' | 'idle' | 'connecting'>('offline');
 
-  // Core Media Stream Reference (Kept alive during reconnects)
-  const localStreamRef = useRef<MediaStream | null>(null);
-
-  // Deepgram Live Streaming WebSocket and Recorder References
-  const dgSocketRef = useRef<WebSocket | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  // Native Browser Speech Recognition References
+  const recognitionRef = useRef<any>(null);
   const explicitDisconnectRef = useRef<boolean>(false);
-  const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const isReconnectingRef = useRef<boolean>(false);
 
   // Helper to log actions exclusively to the browser console
   const logAction = (actionName: string, details: any = '') => {
     const now = new Date();
     const timeStr = now.toTimeString().split(' ')[0] + `.${String(now.getMilliseconds()).padStart(3, '0')}`;
-    console.log(`%c[${timeStr}] [Deepgram Agent Action]: ${actionName}`, 'color: #22d3ee; font-weight: bold;', details);
+    console.log(`%c[${timeStr}] [Speech Recognition Action]: ${actionName}`, 'color: #22d3ee; font-weight: bold;', details);
   };
 
-  // Background socket connector loop
-  const connectToDeepgram = (stream: MediaStream) => {
-    if (dgSocketRef.current) return;
-
-    const apiKey = process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY || "";
-    if (!apiKey || apiKey === "YOUR_DEEPGRAM_API_KEY") {
-      logAction('CRITICAL', 'Deepgram API Key is missing! Check your .env.local file.');
-      alert('API Key Error: Please make sure NEXT_PUBLIC_DEEPGRAM_API_KEY is defined.');
-      return;
-    }
-
-    setAgentState('connecting');
-    logAction('Opening secure Deepgram Real-Time WebSocket Channel...');
-    
-    const dgUrl = `wss://api.deepgram.com/v1/listen?model=nova-2&interim_results=true&smart_format=true&timeout=300`;
-    const dgSocket = new WebSocket(dgUrl, ['token', apiKey.trim()]);
-    dgSocketRef.current = dgSocket;
-
-    dgSocket.onopen = () => {
-      logAction('Deepgram live engine pipe opened successfully.');
-      setAgentState('idle');
-      isReconnectingRef.current = false;
-      
-      // Ping socket setup to handle silence frame gaps
-      keepAliveIntervalRef.current = setInterval(() => {
-        if (dgSocketRef.current && dgSocketRef.current.readyState === WebSocket.OPEN) {
-          dgSocketRef.current.send(JSON.stringify({ type: "KeepAlive" }));
-        }
-      }, 10000);
-
-      try {
-        if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
-          let options = { mimeType: 'audio/webm;codecs=opus' };
-          if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-            options = { mimeType: 'audio/ogg;codecs=opus' };
-          }
-          
-          if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-            mediaRecorderRef.current = new MediaRecorder(stream);
-          } else {
-            mediaRecorderRef.current = new MediaRecorder(stream, options);
-          }
-
-          mediaRecorderRef.current.ondataavailable = (event) => {
-            if (event.data && event.data.size > 0 && dgSocketRef.current && dgSocketRef.current.readyState === WebSocket.OPEN) {
-              dgSocketRef.current.send(event.data);
-            }
-          };
-
-          mediaRecorderRef.current.start(250);
-          logAction('Microphone binary slice engine started.');
-        }
-      } catch (recorderErr) {
-        logAction('MediaRecorder Exception caught', recorderErr);
-      }
-    };
-
-    dgSocket.onmessage = (message) => {
-      try {
-        const receivedData = JSON.parse(message.data);
-        const transcript = receivedData.channel?.alternatives[0]?.transcript;
-        const isFinal = receivedData.is_final;
-
-        if (transcript && transcript.trim() !== "") {
-          if (isFinal) {
-            logAction('Final Transcription Confirmed 📢', { text: transcript.trim() });
-          } else {
-            logAction('Streaming Text (Interim Draft) ⏳', { text: transcript.trim() });
-          }
-        }
-      } catch (parseErr) {
-        // Drop metadata checks safely
-      }
-    };
-
-    dgSocket.onerror = (err) => {
-      logAction('Deepgram WebSocket Error Caught:', err);
-    };
-
-    dgSocket.onclose = (event) => {
-      if (keepAliveIntervalRef.current) {
-        clearInterval(keepAliveIntervalRef.current);
-        keepAliveIntervalRef.current = null;
-      }
-      dgSocketRef.current = null;
-
-      // Handle the call fallback auto-reconnect if it wasn't a manual click
-      if (!explicitDisconnectRef.current) {
-        logAction(`Deepgram link dropped (Code: ${event.code}). Retrying link channel connection in background...`);
-        setAgentState('offline');
-        
-        if (!isReconnectingRef.current) {
-          isReconnectingRef.current = true;
-          setTimeout(() => {
-            if (!explicitDisconnectRef.current && localStreamRef.current) {
-              connectToDeepgram(localStreamRef.current);
-            }
-          }, 2000);
-        }
-      } else {
-        logAction('Deepgram engine detached cleanly.');
-      }
-    };
-  };
-
-  const startWebRtcStream = async () => {
+  const startSpeechRecognition = () => {
     try {
+      // Check for native browser engine availability
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      
+      if (!SpeechRecognition) {
+        logAction('CRITICAL', 'Web Speech API is not supported in this browser version.');
+        alert('Speech Recognition Error: Your current browser does not support the Web Speech API. Try using Google Chrome or Microsoft Edge.');
+        return;
+      }
+
       explicitDisconnectRef.current = false;
       setIsStreaming(true);
-      logAction('Requesting native microphone hardware access...');
-      
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true, 
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-        video: false,
-      });
-      localStreamRef.current = stream;
-      logAction('Microphone stream secured permanently for this session.');
+      setAgentState('connecting');
 
-      connectToDeepgram(stream);
+      logAction('Initializing browser speech recognition infrastructure...');
+      const recognition = new SpeechRecognition();
+      
+      // Configuration for continuous background phone-call-style streaming
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      
+      // Set to empty string for automatic user dialect locale targeting
+      recognition.lang = ''; 
+
+      recognition.onstart = () => {
+        logAction('Native engine channel opened successfully. Listening for audio input...');
+        setAgentState('idle');
+      };
+
+      recognition.onresult = (event: any) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const transcriptChunk = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcriptChunk;
+          } else {
+            interimTranscript += transcriptChunk;
+          }
+        }
+
+        // Output streams dynamically to browser console matching your layout preference
+        if (interimTranscript.trim() !== '') {
+          logAction('Streaming Text (Interim Draft) ⏳', { text: interimTranscript.trim() });
+        }
+        if (finalTranscript.trim() !== '') {
+          logAction('Final Transcription Confirmed 📢', { text: finalTranscript.trim() });
+        }
+      };
+
+      recognition.onerror = (err: any) => {
+        // Suppress benign network gaps or 'no-speech' alerts to protect UI fluidity
+        if (err.error !== 'no-speech') {
+          logAction('Browser Engine Error Captured:', err.error);
+        }
+      };
+
+      recognition.onend = () => {
+        // Smart self-healing reconnect: If it closes on silence, wake it up automatically if ARMED
+        if (!explicitDisconnectRef.current) {
+          logAction('Link connection closed by browser idle management. Reconnecting natively...');
+          setAgentState('connecting');
+          try {
+            recognition.start();
+          } catch (e) {
+            // Protect framework state boundaries from overlapping initialization fires
+          }
+        } else {
+          setAgentState('offline');
+          logAction('Engine detached cleanly.');
+        }
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
 
     } catch (err) {
-      console.error('Failed to initialize call infrastructure:', err);
-      logAction('CRITICAL: Microphone access denied or pipeline failure.');
+      console.error('Failed to initialize local speech engine:', err);
+      logAction('CRITICAL: Access verification or pipeline error thrown.');
       setIsStreaming(false);
       setAgentState('offline');
     }
   };
 
-  const stopWebRtcStream = () => {
+  const stopSpeechRecognition = () => {
     explicitDisconnectRef.current = true;
-    isReconnectingRef.current = false;
 
-    if (keepAliveIntervalRef.current) {
-      clearInterval(keepAliveIntervalRef.current);
-      keepAliveIntervalRef.current = null;
-    }
-
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try { mediaRecorderRef.current.stop(); } catch(e){}
-      mediaRecorderRef.current = null;
-    }
-
-    if (dgSocketRef.current) {
-      try { dgSocketRef.current.close(); } catch(e){}
-      dgSocketRef.current = null;
-    }
-
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop());
-      localStreamRef.current = null;
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+      recognitionRef.current = null;
     }
 
     setIsStreaming(false);
@@ -186,15 +120,11 @@ export default function CleanAgentUI() {
   };
 
   useEffect(() => {
-    logAction('NaviSense Agent Core Engine booted via Deepgram Integration.');
+    logAction('NaviSense Native Web Voice Integration booted.');
     return () => {
       explicitDisconnectRef.current = true;
-      if (keepAliveIntervalRef.current) clearInterval(keepAliveIntervalRef.current);
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-        try { mediaRecorderRef.current.stop(); } catch(e){}
-      }
-      if (dgSocketRef.current) {
-        try { dgSocketRef.current.close(); } catch(e){}
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch (e) {}
       }
     };
   }, []);
@@ -210,19 +140,18 @@ export default function CleanAgentUI() {
         .animate-pulse-lucid { animation: pulse-lucid 4s ease-in-out infinite; }
       `}} />
 
-      {/* LEFT HALF (50%): Original Face Canvas Setup */}
+      {/* LEFT HALF (50%): Face Canvas Setup */}
       <div className="w-1/2 h-full flex flex-col items-center justify-between p-12 bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900/40 border-r border-zinc-900">
         <header className="w-full text-left">
           <div className="flex items-center gap-2">
             <span className="text-lg font-black tracking-tight uppercase">NaviSense</span>
-            <span className="text-[9px] bg-cyan-400/10 border border-cyan-400/20 px-2 py-0.5 rounded text-cyan-400 font-mono font-bold tracking-wider">DEEPGRAM MATRIX ENGINE</span>
           </div>
         </header>
 
         <div className="relative flex items-center justify-center w-full my-auto">
           <div className="absolute rounded-full pointer-events-none blur-3xl opacity-20 bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 w-[370px] h-[370px]" />
           
-          {/* Your original ring structure, glowing as long as mic capture is active */}
+          {/* Your original glowing responsive ring structure */}
           <div 
             className="absolute rounded-full pointer-events-none transition-all duration-300 animate-sweep-clockwise bg-gradient-to-tr from-blue-600 via-violet-600 via-purple-500 to-cyan-400 w-[340px] h-[340px]"
             style={{ opacity: isStreaming ? 0.75 : 0.15, boxShadow: isStreaming ? '0 0 35px rgba(6, 182, 212, 0.3)' : 'none' }}
@@ -269,11 +198,11 @@ export default function CleanAgentUI() {
           </div>
         </div>
 
-        {/* Your Original Button Layout styling matching UNARMED / ARMED state exactly */}
+        {/* Original Action Control Buttons (UNARMED / ARMED style toggle) */}
         <div className="flex items-center justify-center h-20 w-full">
           {!isStreaming ? (
             <button
-              onClick={startWebRtcStream}
+              onClick={startSpeechRecognition}
               className="group p-4 bg-zinc-900 hover:bg-zinc-800/80 border border-zinc-800 hover:border-zinc-700/80 rounded-full transition-all duration-300 active:scale-90 shadow-md shadow-black/40 relative"
             >
               <MicOff className="size-5 text-zinc-500 group-hover:text-zinc-300 transition-colors duration-200" />
@@ -283,7 +212,7 @@ export default function CleanAgentUI() {
             </button>
           ) : (
             <button
-              onClick={stopWebRtcStream}
+              onClick={stopSpeechRecognition}
               className="group p-4 bg-gradient-to-r from-blue-600 to-cyan-500 text-white rounded-full transition-all duration-300 active:scale-90 shadow-lg shadow-cyan-500/20 relative"
             >
               <Mic className="size-5 text-white" />
