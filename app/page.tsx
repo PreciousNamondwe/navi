@@ -411,27 +411,8 @@ export default function AutoWayfindingUI() {
         <header className="w-full flex items-center justify-between z-20">
           <div className="flex flex-col">
             <span className="text-lg font-black tracking-tight uppercase flex items-center gap-2">
-              NaviSense Kiosk <span className="text-[9px] bg-cyan-500/10 text-cyan-400 font-mono tracking-widest px-1.5 py-0.5 rounded border border-cyan-500/20 flex items-center gap-1"><Database className="size-2"/> CONNECTED</span>
+              NaviSense
             </span>
-            <span className="text-[10px] text-zinc-500 font-mono tracking-wider">MUBAS ODeL Wayfinding System • Fixed Origin Path Tracking</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                clearSilenceTimer();
-                setAgentState('processing');
-                setVoiceIntentQuery("auditorium");
-              }}
-              className="px-3 py-1 bg-zinc-900 border border-zinc-800 rounded-md text-[11px] font-mono hover:border-cyan-500/50 transition-all flex items-center gap-1.5"
-            >
-              <Play className="size-3 text-cyan-400" /> Simulate Target "Auditorium"
-            </button>
-            {currentNodeIndex >= 0 && (
-              <button onClick={clearActiveSequence} className="p-1 bg-zinc-900 border border-zinc-800 rounded-md hover:border-red-500/50 transition-all">
-                <RotateCcw className="size-3.5 text-zinc-400" />
-              </button>
-            )}
           </div>
         </header>
 
