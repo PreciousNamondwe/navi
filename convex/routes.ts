@@ -1,20 +1,36 @@
 import { v } from "convex/values";
-import { query, mutation } from "./_generated/server";
+import { query } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
 
-interface WayfindingSlide {
-  id: string;
-  stepTitle: string;
-  originNodeLabel: string;
-  targetNodeLabel: string;
-  textDirection: string;
-  description: string;
-  walkingTime: number;
-  image: string; // Will hold the fully evaluated storage HTTP download path
-  isLandmark: boolean;
-  landmarkType?: string;
-}
+// ──────────────────────────────────────────
+// NEW: Building context for Groq LLM prompt
+// ──────────────────────────────────────────
+export const getBuildingContext = query({
+  args: {},
+  handler: async (ctx) => {
+    const destinations = await ctx.db.query("destinations").collect();
+    const floors = await ctx.db.query("floors").collect();
+    const nodes = await ctx.db.query("nodes").collect();
+    
+    return {
+      destinations: destinations.map((d) => ({
+        name: d.name,
+        aliases: d.aliases,
+        floorId: d.floorId,
+        description: d.description,
+      })),
+      floors: floors.map((f) => ({
+        name: f.name,
+        level: f.level,
+      })),
+      totalNodes: nodes.length,
+    };
+  },
+});
 
+// ──────────────────────────────────────────
+// EXISTING: Wayfinding BFS engine
+// ──────────────────────────────────────────
 export const getWayfindingSequence = query({
   args: {
     transcriptInput: v.string(),
@@ -23,43 +39,46 @@ export const getWayfindingSequence = query({
     const searchIntent = args.transcriptInput.trim().toLowerCase();
     if (!searchIntent) return null;
 
-    // 1. Fetch destinations and execute sanitized substring matching
     const allDestinations = await ctx.db.query("destinations").collect();
     const matchedDestination = allDestinations.find((dest) => {
       const normalizedName = (dest.name || "").toLowerCase();
-      const nameMatch = searchIntent.includes(normalizedName) || normalizedName.includes(searchIntent);
-      
-      const aliasMatch = Array.isArray(dest.aliases) && dest.aliases.some((alias) => {
-        const normalizedAlias = (alias || "").toLowerCase();
-        return searchIntent.includes(normalizedAlias) || normalizedAlias.includes(searchIntent);
-      });
-      
+      const nameMatch =
+        searchIntent.includes(normalizedName) ||
+        normalizedName.includes(searchIntent);
+
+      const aliasMatch =
+        Array.isArray(dest.aliases) &&
+        dest.aliases.some((alias) => {
+          const normalizedAlias = (alias || "").toLowerCase();
+          return (
+            searchIntent.includes(normalizedAlias) ||
+            normalizedAlias.includes(searchIntent)
+          );
+        });
+
       return nameMatch || aliasMatch;
     });
 
     if (!matchedDestination) {
-      console.log(`[Wayfinding] No text match found in DB destinations for user input: "${searchIntent}"`);
+      console.log(`[Wayfinding] No match for: "${searchIntent}"`);
       return null;
     }
 
-    // 2. Locate our anchored Starting Point 
     let startNode = await ctx.db
       .query("nodes")
       .filter((q) => q.eq(q.field("label"), "Main Entrance Reception"))
       .first();
 
-    // STRICT BASELINE SAFEGUARD: If it's missing, fail gracefully with instructions
     if (!startNode) {
-      console.error("❌ CRITICAL: 'Main Entrance Reception' anchor node is missing from your 'nodes' table database layer!");
+      console.error("CRITICAL: Anchor node 'Main Entrance Reception' missing!");
       return null;
     }
 
     if (startNode._id === matchedDestination.targetNodeId) {
-      console.log("[Wayfinding]: User is already at the requested destination node.");
+      console.log("[Wayfinding]: Already at destination.");
       return null;
     }
 
-    // 3. Graph Pathfinding engine (BFS) to discover the shortest path vector
     const pathEdges = await findShortestPath(
       ctx,
       startNode._id,
@@ -67,29 +86,29 @@ export const getWayfindingSequence = query({
     );
 
     if (!pathEdges || pathEdges.length === 0) {
-      console.error(`[Graph Error]: Destination "${matchedDestination.name}" found, but no paths connect Start Node (${startNode.label}) to Target Node ID (${matchedDestination.targetNodeId}) in your 'connections' table.`);
+      console.error(
+        `[Graph Error]: No path to "${matchedDestination.name}"`
+      );
       return null;
     }
 
-    // 4. Transform the connections/edges into the sequential UI Slide Array
     const slides: WayfindingSlide[] = [];
-    
+
     for (let i = 0; i < pathEdges.length; i++) {
       const edge = pathEdges[i];
       const fromNode = await ctx.db.get(edge.fromNodeId);
       const toNode = await ctx.db.get(edge.toNodeId);
 
       if (fromNode && toNode) {
-        // Resolve the raw storage ID (e.g., kg22e35g...) into an authorized, viewable CDN URL
         let resolvedImageUrl = "";
         if (edge.imageUrl) {
           try {
             const publicUrl = await ctx.storage.getUrl(edge.imageUrl);
-            if (publicUrl) {
-              resolvedImageUrl = publicUrl;
-            }
+            if (publicUrl) resolvedImageUrl = publicUrl;
           } catch (storageErr) {
-            console.warn(`[Storage Warning]: Could not resolve URL for file ID ${edge.imageUrl}, passing fallback identifier.`);
+            console.warn(
+              `[Storage Warning]: Could not resolve ${edge.imageUrl}`
+            );
           }
         }
 
@@ -101,7 +120,7 @@ export const getWayfindingSequence = query({
           textDirection: edge.textDirection,
           description: edge.audioDescription,
           walkingTime: edge.estimatedWalkingTime,
-          image: resolvedImageUrl, // Now contains a clean, viewable https:// URL string
+          image: resolvedImageUrl,
           isLandmark: toNode.isLandmark,
           landmarkType: toNode.landmarkType,
         });
@@ -115,6 +134,9 @@ export const getWayfindingSequence = query({
   },
 });
 
+// ──────────────────────────────────────────
+// Helper: BFS shortest path
+// ──────────────────────────────────────────
 async function findShortestPath(
   ctx: any,
   startNodeId: Id<"nodes">,
@@ -137,7 +159,9 @@ async function findShortestPath(
 
     const outgoingEdges = await ctx.db
       .query("connections")
-      .withIndex("by_fromNode", (q: any) => q.eq("fromNodeId", currentNodeId))
+      .withIndex("by_fromNode", (q: any) =>
+        q.eq("fromNodeId", currentNodeId)
+      )
       .collect();
 
     for (const edge of outgoingEdges) {
@@ -152,4 +176,18 @@ async function findShortestPath(
   }
 
   return null;
+}
+
+// Type used internally
+interface WayfindingSlide {
+  id: string;
+  stepTitle: string;
+  originNodeLabel: string;
+  targetNodeLabel: string;
+  textDirection: string;
+  description: string;
+  walkingTime: number;
+  image: string;
+  isLandmark: boolean;
+  landmarkType?: string;
 }
