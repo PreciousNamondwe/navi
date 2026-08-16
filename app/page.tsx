@@ -82,7 +82,7 @@ export default function ConversationalWayfindingUI() {
 
   // ─── NEW: Groq Direction Rewriter ───
   const rewriteDirection = useCallback(async (slide: SlideData): Promise<string> => {
-    const apiKey = process.env.NEXT_PUBLIC_GROQ_API_KEY;
+    const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) return slide.description;
 
     const prompt = `You are a building navigation assistant. Rewrite the following direction to be crystal clear, natural, and easy to follow when spoken aloud.
