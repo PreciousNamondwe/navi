@@ -80,10 +80,17 @@ export default function ConversationalWayfindingUI() {
     if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
   }, [chatMessages]);
 
+  const getGroqApiKey = useCallback(() => {
+    return (process.env.NEXT_PUBLIC_GROQ_API_KEY || process.env.NEXT_PRIVATE_GROQ_API_KEY || '').trim();
+  }, []);
+
   // ─── NEW: Groq Direction Rewriter ───
   const rewriteDirection = useCallback(async (slide: SlideData): Promise<string> => {
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) return slide.description;
+    const apiKey = getGroqApiKey();
+    if (!apiKey) {
+      console.warn('Groq API key not configured; using original direction text.');
+      return slide.description;
+    }
 
     const prompt = `You are a building navigation assistant. Rewrite the following direction to be crystal clear, natural, and easy to follow when spoken aloud.
 
@@ -200,9 +207,10 @@ RESPOND ONLY IN THIS JSON FORMAT:
   }, [buildingContext]);
 
   const processWithGroq = async (transcript: string): Promise<GroqIntent> => {
-    const apiKey = process.env.NEXT_PUBLIC_GROQ_API_KEY;
+    const apiKey = getGroqApiKey();
     if (!apiKey) {
-      throw new Error("Groq API key not configured");
+      console.warn('Groq API key not configured; falling back to a safe chat response.');
+      return { intent: 'chat', destination: null, response: "I'm here to help! Need directions or have questions about the building?" };
     }
 
     const messages = [

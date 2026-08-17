@@ -585,13 +585,13 @@ export default function AdminDashboard() {
                       {f.floorPlanUrl && <span className="text-[10px] bg-neutral-800 text-neutral-400 px-1.5 py-0.5 rounded">Image</span>}
                     </div>
                   )))}
-                  {activeTab === 'nodes' && (data.nodes.length === 0 ? <div className="text-xs text-neutral-600 text-center py-8">No nodes</div> : data.nodes.map(n => (
+                  {activeTab === 'nodes' && ((data?.nodes?.length ?? 0) === 0 ? <div className="text-xs text-neutral-600 text-center py-8">No nodes</div> : (data?.nodes ?? []).map(n => (
                     <div key={n._id} className="px-3 py-2.5 bg-neutral-950 border border-neutral-800 rounded-md space-y-0.5">
                       <div className="text-xs font-medium text-white">{n.label}</div>
                       <div className="text-[10px] text-neutral-500">Floor: {getFloorName(n.floorId)} {n.isLandmark && <span className="text-emerald-500 ml-1">● Landmark</span>}</div>
                     </div>
                   )))}
-                  {activeTab === 'destinations' && (data.destinations.length === 0 ? <div className="text-xs text-neutral-600 text-center py-8">No destinations</div> : data.destinations.map(d => (
+                  {activeTab === 'destinations' && ((data?.destinations?.length ?? 0) === 0 ? <div className="text-xs text-neutral-600 text-center py-8">No destinations</div> : (data?.destinations ?? []).map(d => (
                     <div key={d._id} className="px-3 py-2.5 bg-neutral-950 border border-neutral-800 rounded-md space-y-1">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-medium text-white">{d.name}</span>
