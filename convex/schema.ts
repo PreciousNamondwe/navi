@@ -40,4 +40,12 @@ export default defineSchema({
     targetNodeId: v.id("nodes"),
     description: v.string(),
   }),
+
+  qrCodes: defineTable({
+    entityType: v.union(v.literal("node"), v.literal("destination")),
+    entityId: v.string(),
+    label: v.string(),
+    content: v.string(),
+    createdAt: v.number(),
+  }).index("by_entity", ["entityType", "entityId"]),
 });

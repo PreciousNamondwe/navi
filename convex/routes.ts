@@ -11,17 +11,34 @@ export const getBuildingContext = query({
     const destinations = await ctx.db.query("destinations").collect();
     const floors = await ctx.db.query("floors").collect();
     const nodes = await ctx.db.query("nodes").collect();
+    const qrCodes = await ctx.db.query("qrCodes").collect();
+
+    const buildQrContent = (entityType: "node" | "destination", entityId: string, label: string) =>
+      `https://navi.local/continue?entityType=${entityType}&entityId=${encodeURIComponent(entityId)}&label=${encodeURIComponent(label)}`;
     
     return {
       destinations: destinations.map((d) => ({
+        _id: d._id,
         name: d.name,
         aliases: d.aliases,
         floorId: d.floorId,
         description: d.description,
       })),
       floors: floors.map((f) => ({
+        _id: f._id,
         name: f.name,
         level: f.level,
+      })),
+      nodes: nodes.map((n) => ({
+        _id: n._id,
+        label: n.label,
+        floorId: n.floorId,
+        isLandmark: n.isLandmark,
+        landmarkType: n.landmarkType,
+      })),
+      qrCodes: qrCodes.map((code) => ({
+        ...code,
+        content: code.content || buildQrContent(code.entityType, code.entityId, code.label),
       })),
       totalNodes: nodes.length,
     };

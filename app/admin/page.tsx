@@ -26,9 +26,17 @@ export default function AdminDashboard() {
   const data = useQuery(api.admin.listAllData);
 
   const insertFloor = useMutation(api.admin.addFloor);
+  const updateFloor = useMutation(api.admin.updateFloor);
+  const deleteFloor = useMutation(api.admin.deleteFloor);
   const insertNode = useMutation(api.admin.addNode);
+  const updateNode = useMutation(api.admin.updateNode);
+  const deleteNode = useMutation(api.admin.deleteNode);
   const insertDestination = useMutation(api.admin.addDestination);
+  const updateDestination = useMutation(api.admin.updateDestination);
+  const deleteDestination = useMutation(api.admin.deleteDestination);
   const insertConnection = useMutation(api.admin.addConnection);
+  const updateConnection = useMutation(api.admin.updateConnection);
+  const deleteConnection = useMutation(api.admin.deleteConnection);
   const getUploadUrl = useMutation(api.admin.generateUploadUrl);
 
   // Forms
@@ -57,6 +65,10 @@ export default function AdminDashboard() {
 
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [editingFloorId, setEditingFloorId] = useState<string | null>(null);
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [editingDestinationId, setEditingDestinationId] = useState<string | null>(null);
+  const [editingConnectionId, setEditingConnectionId] = useState<string | null>(null);
 
   // ─── Helpers ───
   const uploadToConvex = async (file: File): Promise<string> => {
@@ -134,14 +146,49 @@ export default function AdminDashboard() {
   const onCanvasClick = () => setSelectedNodeId(null);
 
   // ─── Submit handlers ───
+  const resetFloorForm = () => {
+    setFloorForm({ level: 0, name: '' });
+    setFloorFile(null);
+    setEditingFloorId(null);
+    if (floorFileRef.current) floorFileRef.current.value = '';
+  };
+
+  const resetNodeForm = () => {
+    setNodeForm({ floorId: '', label: '', isLandmark: false, landmarkType: 'corridor' });
+    setEditingNodeId(null);
+  };
+
+  const resetDestinationForm = () => {
+    setDestForm({ name: '', aliasesRaw: '', floorId: '', description: '', targetNodeId: '' });
+    setEditingDestinationId(null);
+  };
+
+  const resetConnectionForm = () => {
+    setConnForm({ fromNodeId: '', toNodeId: '', videoSegmentUrl: '', textDirection: '', audioDescription: '', estimatedWalkingTime: 30 });
+    setConnFile(null);
+    setActiveDraft(false);
+    setEditingConnectionId(null);
+    if (connFileRef.current) connFileRef.current.value = '';
+  };
+
   const handleFloor = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true);
     try {
-      let url = undefined;
+      let url: string | undefined = undefined;
       if (floorFile) url = await uploadToConvex(floorFile);
-      await insertFloor({ level: Number(floorForm.level), name: floorForm.name, floorPlanUrl: url });
-      setFloorForm({ level: 0, name: '' }); setFloorFile(null);
-      if (floorFileRef.current) floorFileRef.current.value = '';
+
+      if (editingFloorId) {
+        await updateFloor({
+          _id: editingFloorId as Id<"floors">,
+          level: Number(floorForm.level),
+          name: floorForm.name,
+          floorPlanUrl: url ?? data?.floors?.find(f => f._id === editingFloorId)?.floorPlanUrl,
+        });
+      } else {
+        await insertFloor({ level: Number(floorForm.level), name: floorForm.name, floorPlanUrl: url });
+      }
+
+      resetFloorForm();
     } catch (err) { console.error(err); alert('Error saving floor'); }
     setLoading(false);
   };
@@ -151,13 +198,23 @@ export default function AdminDashboard() {
     if (!nodeForm.floorId) return alert('Select a floor');
     setLoading(true);
     try {
-      await insertNode({
-        floorId: nodeForm.floorId as Id<"floors">,
-        label: nodeForm.label,
-        isLandmark: nodeForm.isLandmark,
-        landmarkType: nodeForm.isLandmark ? nodeForm.landmarkType : undefined,
-      });
-      setNodeForm({ floorId: '', label: '', isLandmark: false, landmarkType: 'corridor' });
+      if (editingNodeId) {
+        await updateNode({
+          _id: editingNodeId as Id<"nodes">,
+          floorId: nodeForm.floorId as Id<"floors">,
+          label: nodeForm.label,
+          isLandmark: nodeForm.isLandmark,
+          landmarkType: nodeForm.isLandmark ? nodeForm.landmarkType : undefined,
+        });
+      } else {
+        await insertNode({
+          floorId: nodeForm.floorId as Id<"floors">,
+          label: nodeForm.label,
+          isLandmark: nodeForm.isLandmark,
+          landmarkType: nodeForm.isLandmark ? nodeForm.landmarkType : undefined,
+        });
+      }
+      resetNodeForm();
     } catch (err) { console.error(err); alert('Error saving node'); }
     setLoading(false);
   };
@@ -168,13 +225,24 @@ export default function AdminDashboard() {
     setLoading(true);
     try {
       const aliases = destForm.aliasesRaw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-      await insertDestination({
-        name: destForm.name, aliases,
-        floorId: destForm.floorId as Id<"floors">,
-        description: destForm.description,
-        targetNodeId: destForm.targetNodeId as Id<"nodes">,
-      });
-      setDestForm({ name: '', aliasesRaw: '', floorId: '', description: '', targetNodeId: '' });
+      if (editingDestinationId) {
+        await updateDestination({
+          _id: editingDestinationId as Id<"destinations">,
+          name: destForm.name,
+          aliases,
+          floorId: destForm.floorId as Id<"floors">,
+          description: destForm.description,
+          targetNodeId: destForm.targetNodeId as Id<"nodes">,
+        });
+      } else {
+        await insertDestination({
+          name: destForm.name, aliases,
+          floorId: destForm.floorId as Id<"floors">,
+          description: destForm.description,
+          targetNodeId: destForm.targetNodeId as Id<"nodes">,
+        });
+      }
+      resetDestinationForm();
     } catch (err) { console.error(err); alert('Error saving destination'); }
     setLoading(false);
   };
@@ -183,22 +251,33 @@ export default function AdminDashboard() {
     e.preventDefault();
     if (!connForm.fromNodeId || !connForm.toNodeId) return alert('Select start and end nodes');
     if (connForm.fromNodeId === connForm.toNodeId) return alert('Cannot connect node to itself');
-    if (!connFile) return alert('Upload a scene image');
+    if (!editingConnectionId && !connFile) return alert('Upload a scene image');
     setLoading(true);
     try {
-      const fileId = await uploadToConvex(connFile);
-      await insertConnection({
-        fromNodeId: connForm.fromNodeId as Id<"nodes">,
-        toNodeId: connForm.toNodeId as Id<"nodes">,
-        imageUrl: fileId,
-        videoSegmentUrl: connForm.videoSegmentUrl || undefined,
-        textDirection: connForm.textDirection,
-        audioDescription: connForm.audioDescription,
-        estimatedWalkingTime: Number(connForm.estimatedWalkingTime),
-      });
-      setConnForm({ fromNodeId: '', toNodeId: '', videoSegmentUrl: '', textDirection: '', audioDescription: '', estimatedWalkingTime: 30 });
-      setConnFile(null); setActiveDraft(false);
-      if (connFileRef.current) connFileRef.current.value = '';
+      const fileId = editingConnectionId ? data?.connections?.find(c => c._id === editingConnectionId)?.imageUrl : await uploadToConvex(connFile as File);
+      if (editingConnectionId) {
+        await updateConnection({
+          _id: editingConnectionId as Id<"connections">,
+          fromNodeId: connForm.fromNodeId as Id<"nodes">,
+          toNodeId: connForm.toNodeId as Id<"nodes">,
+          imageUrl: fileId || '',
+          videoSegmentUrl: connForm.videoSegmentUrl || undefined,
+          textDirection: connForm.textDirection,
+          audioDescription: connForm.audioDescription,
+          estimatedWalkingTime: Number(connForm.estimatedWalkingTime),
+        });
+      } else {
+        await insertConnection({
+          fromNodeId: connForm.fromNodeId as Id<"nodes">,
+          toNodeId: connForm.toNodeId as Id<"nodes">,
+          imageUrl: fileId || '',
+          videoSegmentUrl: connForm.videoSegmentUrl || undefined,
+          textDirection: connForm.textDirection,
+          audioDescription: connForm.audioDescription,
+          estimatedWalkingTime: Number(connForm.estimatedWalkingTime),
+        });
+      }
+      resetConnectionForm();
     } catch (err) { console.error(err); alert('Error saving connection'); }
     setLoading(false);
   };
@@ -213,6 +292,67 @@ export default function AdminDashboard() {
 
   const selectedNode = positions.find(p => p.id === selectedNodeId);
   const originPos = positions.find(p => p.id === connectingFrom);
+  const isEditingConnection = Boolean(editingConnectionId);
+
+  const startEditFloor = (floor: any) => {
+    setEditingFloorId(floor._id);
+    setFloorForm({ level: floor.level, name: floor.name });
+    setFloorFile(null);
+  };
+
+  const startEditNode = (node: any) => {
+    setEditingNodeId(node._id);
+    setNodeForm({
+      floorId: node.floorId,
+      label: node.label,
+      isLandmark: node.isLandmark,
+      landmarkType: node.landmarkType || 'corridor',
+    });
+  };
+
+  const startEditDestination = (destination: any) => {
+    setEditingDestinationId(destination._id);
+    setDestForm({
+      name: destination.name,
+      aliasesRaw: destination.aliases?.join(', ') || '',
+      floorId: destination.floorId,
+      description: destination.description,
+      targetNodeId: destination.targetNodeId,
+    });
+  };
+
+  const startEditConnection = (connection: any) => {
+    setEditingConnectionId(connection._id);
+    setConnForm({
+      fromNodeId: connection.fromNodeId,
+      toNodeId: connection.toNodeId,
+      videoSegmentUrl: connection.videoSegmentUrl || '',
+      textDirection: connection.textDirection,
+      audioDescription: connection.audioDescription,
+      estimatedWalkingTime: connection.estimatedWalkingTime,
+    });
+    setActiveDraft(true);
+  };
+
+  const handleDeleteFloor = async (id: string) => {
+    if (!confirm('Delete this floor and its related data?')) return;
+    await deleteFloor({ _id: id as Id<"floors"> });
+  };
+
+  const handleDeleteNode = async (id: string) => {
+    if (!confirm('Delete this node and any related edges/destinations?')) return;
+    await deleteNode({ _id: id as Id<"nodes"> });
+  };
+
+  const handleDeleteDestination = async (id: string) => {
+    if (!confirm('Delete this destination?')) return;
+    await deleteDestination({ _id: id as Id<"destinations"> });
+  };
+
+  const handleDeleteConnection = async (id: string) => {
+    if (!confirm('Delete this edge?')) return;
+    await deleteConnection({ _id: id as Id<"connections"> });
+  };
 
   return (
     <div className="h-screen bg-neutral-950 text-neutral-200 flex font-sans overflow-hidden selection:bg-cyan-500/30">
@@ -361,8 +501,8 @@ export default function AdminDashboard() {
                 {activeDraft ? (
                   <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-4 space-y-3">
                     <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
-                      <span className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider">New Edge</span>
-                      <button onClick={() => { setActiveDraft(false); setConnForm(prev => ({ ...prev, fromNodeId: '', toNodeId: '' })); }} className="text-neutral-500 hover:text-white">
+                      <span className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider">{isEditingConnection ? 'Edit Edge' : 'New Edge'}</span>
+                      <button onClick={() => { resetConnectionForm(); setActiveDraft(false); setConnForm(prev => ({ ...prev, fromNodeId: '', toNodeId: '' })); }} className="text-neutral-500 hover:text-white">
                         <X className="size-3.5" />
                       </button>
                     </div>
@@ -371,15 +511,17 @@ export default function AdminDashboard() {
                       <div>To: <span className="text-cyan-400">{getNodeLabel(connForm.toNodeId)}</span></div>
                     </div>
                     <form onSubmit={handleConn} className="space-y-3">
-                      <div>
-                        <label className="text-[10px] font-bold text-neutral-500 uppercase block mb-1">Scene Image</label>
-                        <div className="relative border border-dashed border-neutral-700 rounded-lg p-3 hover:border-neutral-600 transition-colors cursor-pointer">
-                          <input type="file" accept="image/*" ref={connFileRef} onChange={e => setConnFile(e.target.files?.[0] || null)} className="absolute inset-0 opacity-0 cursor-pointer" required />
-                          <div className="flex items-center gap-2 text-[11px] text-neutral-400">
-                            {connFile ? <><Check className="size-3.5 text-emerald-500" /> {connFile.name}</> : <><Upload className="size-3.5" /> Upload image</>}
+                      {!isEditingConnection && (
+                        <div>
+                          <label className="text-[10px] font-bold text-neutral-500 uppercase block mb-1">Scene Image</label>
+                          <div className="relative border border-dashed border-neutral-700 rounded-lg p-3 hover:border-neutral-600 transition-colors cursor-pointer">
+                            <input type="file" accept="image/*" ref={connFileRef} onChange={e => setConnFile(e.target.files?.[0] || null)} className="absolute inset-0 opacity-0 cursor-pointer" required={!isEditingConnection} />
+                            <div className="flex items-center gap-2 text-[11px] text-neutral-400">
+                              {connFile ? <><Check className="size-3.5 text-emerald-500" /> {connFile.name}</> : <><Upload className="size-3.5" /> Upload image</>}
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      )}
                       <div>
                         <label className="text-[10px] font-bold text-neutral-500 uppercase block mb-1">Text Direction</label>
                         <input type="text" value={connForm.textDirection} onChange={e => setConnForm({ ...connForm, textDirection: e.target.value })}
@@ -402,11 +544,16 @@ export default function AdminDashboard() {
                             className="w-full bg-neutral-950 border border-neutral-800 rounded-md px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-600" />
                         </div>
                       </div>
-                      <button type="submit" disabled={loading || uploading}
-                        className="w-full bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 text-white text-xs font-bold py-2 rounded-md transition-colors flex items-center justify-center gap-2">
-                        {(loading || uploading) && <Loader2 className="size-3.5 animate-spin" />}
-                        {uploading ? 'Uploading...' : loading ? 'Saving...' : 'Create Edge'}
-                      </button>
+                      <div className="flex gap-2">
+                        <button type="submit" disabled={loading || uploading}
+                          className="flex-1 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 text-white text-xs font-bold py-2 rounded-md transition-colors flex items-center justify-center gap-2">
+                          {(loading || uploading) && <Loader2 className="size-3.5 animate-spin" />}
+                          {uploading ? 'Uploading...' : loading ? (isEditingConnection ? 'Updating...' : 'Saving...') : isEditingConnection ? 'Update Edge' : 'Create Edge'}
+                        </button>
+                        {isEditingConnection && (
+                          <button type="button" onClick={() => { resetConnectionForm(); setActiveDraft(false); }} className="px-3 py-2 bg-neutral-800 border border-neutral-700 text-neutral-300 rounded-md text-xs font-bold">Cancel</button>
+                        )}
+                      </div>
                     </form>
                   </div>
                 ) : selectedNode ? (
@@ -446,6 +593,10 @@ export default function AdminDashboard() {
                         <span className="truncate text-neutral-400">{getNodeLabel(c.fromNodeId)}</span>
                         <Navigation className="size-3 text-neutral-700 shrink-0" />
                         <span className="truncate text-neutral-300">{getNodeLabel(c.toNodeId)}</span>
+                        <div className="ml-auto flex items-center gap-1.5">
+                          <button type="button" onClick={() => startEditConnection(c)} className="text-[9px] text-cyan-400 hover:text-cyan-300">Edit</button>
+                          <button type="button" onClick={() => handleDeleteConnection(c._id)} className="text-[9px] text-red-400 hover:text-red-300">Delete</button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -481,10 +632,15 @@ export default function AdminDashboard() {
                         </div>
                       </div>
                     </div>
-                    <button type="submit" disabled={loading || uploading} className="w-full bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 text-white text-xs font-bold py-2.5 rounded-md transition-colors flex items-center justify-center gap-2">
-                      {(loading || uploading) && <Loader2 className="size-3.5 animate-spin" />}
-                      {uploading ? 'Uploading...' : loading ? 'Saving...' : 'Save Floor'}
-                    </button>
+                    <div className="flex gap-2">
+                      <button type="submit" disabled={loading || uploading} className="flex-1 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 text-white text-xs font-bold py-2.5 rounded-md transition-colors flex items-center justify-center gap-2">
+                        {(loading || uploading) && <Loader2 className="size-3.5 animate-spin" />}
+                        {uploading ? 'Uploading...' : loading ? (editingFloorId ? 'Updating...' : 'Saving...') : editingFloorId ? 'Update Floor' : 'Save Floor'}
+                      </button>
+                      {editingFloorId && (
+                        <button type="button" onClick={resetFloorForm} className="px-3 py-2.5 bg-neutral-800 border border-neutral-700 text-neutral-300 rounded-md text-xs font-bold">Cancel</button>
+                      )}
+                    </div>
                   </form>
                 )}
 
@@ -520,9 +676,14 @@ export default function AdminDashboard() {
                         </select>
                       </div>
                     )}
-                    <button type="submit" disabled={loading} className="w-full bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 text-white text-xs font-bold py-2.5 rounded-md transition-colors">
-                      {loading ? 'Saving...' : 'Save Node'}
-                    </button>
+                    <div className="flex gap-2">
+                      <button type="submit" disabled={loading} className="flex-1 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 text-white text-xs font-bold py-2.5 rounded-md transition-colors">
+                        {loading ? (editingNodeId ? 'Updating...' : 'Saving...') : editingNodeId ? 'Update Node' : 'Save Node'}
+                      </button>
+                      {editingNodeId && (
+                        <button type="button" onClick={resetNodeForm} className="px-3 py-2.5 bg-neutral-800 border border-neutral-700 text-neutral-300 rounded-md text-xs font-bold">Cancel</button>
+                      )}
+                    </div>
                   </form>
                 )}
 
@@ -561,9 +722,14 @@ export default function AdminDashboard() {
                       <textarea value={destForm.description} onChange={e => setDestForm({ ...destForm, description: e.target.value })} rows={3}
                         className="w-full bg-neutral-950 border border-neutral-800 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-600 resize-none" required />
                     </div>
-                    <button type="submit" disabled={loading} className="w-full bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 text-white text-xs font-bold py-2.5 rounded-md transition-colors">
-                      {loading ? 'Saving...' : 'Save Destination'}
-                    </button>
+                    <div className="flex gap-2">
+                      <button type="submit" disabled={loading} className="flex-1 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 text-white text-xs font-bold py-2.5 rounded-md transition-colors">
+                        {loading ? (editingDestinationId ? 'Updating...' : 'Saving...') : editingDestinationId ? 'Update Destination' : 'Save Destination'}
+                      </button>
+                      {editingDestinationId && (
+                        <button type="button" onClick={resetDestinationForm} className="px-3 py-2.5 bg-neutral-800 border border-neutral-700 text-neutral-300 rounded-md text-xs font-bold">Cancel</button>
+                      )}
+                    </div>
                   </form>
                 )}
               </div>
@@ -577,26 +743,40 @@ export default function AdminDashboard() {
                   {!data ? (
                     <div className="text-xs text-neutral-600 text-center py-8">Loading...</div>
                   ) : activeTab === 'floors' && (data.floors.length === 0 ? <div className="text-xs text-neutral-600 text-center py-8">No floors</div> : data.floors.map(f => (
-                    <div key={f._id} className="flex items-center justify-between px-3 py-2.5 bg-neutral-950 border border-neutral-800 rounded-md">
+                    <div key={f._id} className="flex items-center justify-between gap-2 px-3 py-2.5 bg-neutral-950 border border-neutral-800 rounded-md">
                       <div>
                         <div className="text-xs font-medium text-white">Level {f.level}: {f.name}</div>
                         <div className="text-[10px] font-mono text-neutral-600">{f._id}</div>
                       </div>
-                      {f.floorPlanUrl && <span className="text-[10px] bg-neutral-800 text-neutral-400 px-1.5 py-0.5 rounded">Image</span>}
+                      <div className="flex items-center gap-2">
+                        {f.floorPlanUrl && <span className="text-[10px] bg-neutral-800 text-neutral-400 px-1.5 py-0.5 rounded">Image</span>}
+                        <button type="button" onClick={() => startEditFloor(f)} className="text-[10px] text-cyan-400 hover:text-cyan-300">Edit</button>
+                        <button type="button" onClick={() => handleDeleteFloor(f._id)} className="text-[10px] text-red-400 hover:text-red-300">Delete</button>
+                      </div>
                     </div>
                   )))}
                   {activeTab === 'nodes' && ((data?.nodes?.length ?? 0) === 0 ? <div className="text-xs text-neutral-600 text-center py-8">No nodes</div> : (data?.nodes ?? []).map(n => (
                     <div key={n._id} className="px-3 py-2.5 bg-neutral-950 border border-neutral-800 rounded-md space-y-0.5">
-                      <div className="text-xs font-medium text-white">{n.label}</div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-xs font-medium text-white">{n.label}</div>
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => startEditNode(n)} className="text-[10px] text-cyan-400 hover:text-cyan-300">Edit</button>
+                          <button type="button" onClick={() => handleDeleteNode(n._id)} className="text-[10px] text-red-400 hover:text-red-300">Delete</button>
+                        </div>
+                      </div>
                       <div className="text-[10px] text-neutral-500">Floor: {getFloorName(n.floorId)} {n.isLandmark && <span className="text-emerald-500 ml-1">● Landmark</span>}</div>
                     </div>
                   )))}
                   {activeTab === 'destinations' && ((data?.destinations?.length ?? 0) === 0 ? <div className="text-xs text-neutral-600 text-center py-8">No destinations</div> : (data?.destinations ?? []).map(d => (
                     <div key={d._id} className="px-3 py-2.5 bg-neutral-950 border border-neutral-800 rounded-md space-y-1">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-2">
                         <span className="text-xs font-medium text-white">{d.name}</span>
-                        <span className="text-[10px] text-neutral-500">{getNodeLabel(d.targetNodeId)}</span>
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => startEditDestination(d)} className="text-[10px] text-cyan-400 hover:text-cyan-300">Edit</button>
+                          <button type="button" onClick={() => handleDeleteDestination(d._id)} className="text-[10px] text-red-400 hover:text-red-300">Delete</button>
+                        </div>
                       </div>
+                      <span className="text-[10px] text-neutral-500">{getNodeLabel(d.targetNodeId)}</span>
                       <p className="text-[11px] text-neutral-400 leading-snug">{d.description}</p>
                       <div className="flex flex-wrap gap-1">
                         {d.aliases.map((a, i) => <span key={i} className="text-[9px] bg-neutral-800 text-neutral-500 px-1 py-0.5 rounded">"{a}"</span>)}

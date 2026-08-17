@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { useQuery } from 'convex/react';
+import { useQuery, useMutation } from 'convex/react';
 import { api } from '../convex/_generated/api';
 import { Mic, MicOff, MapPin, Landmark, Volume2, ArrowRight, MessageSquare, Navigation, Bot, User, Compass, Sparkles } from 'lucide-react';
 
@@ -47,6 +47,7 @@ export default function ConversationalWayfindingUI() {
   
   // Navigation state
   const [voiceIntentQuery, setVoiceIntentQuery] = useState<string>("");
+  const [spokenDestinationName, setSpokenDestinationName] = useState<string>("");
   const [currentNodeIndex, setCurrentNodeIndex] = useState<number>(-1);
   const [rewrittenDirection, setRewrittenDirection] = useState<string>("");
   
@@ -56,9 +57,18 @@ export default function ConversationalWayfindingUI() {
 
   // Data queries
   const buildingContext = useQuery(api.routes.getBuildingContext);
+  const ensureQrCodeRecords = useMutation(api.admin.ensureQrCodeRecords);
   const liveConvexRoute = useQuery(api.routes.getWayfindingSequence, {
     transcriptInput: voiceIntentQuery
   });
+
+  useEffect(() => {
+    if (buildingContext) {
+      ensureQrCodeRecords().catch(() => {
+        console.warn('Unable to ensure QR code records exist yet.');
+      });
+    }
+  }, [buildingContext, ensureQrCodeRecords]);
 
   // Refs
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -359,16 +369,19 @@ RESPOND ONLY IN THIS JSON FORMAT:
       setCurrentSystemMessage(groqResult.response);
 
       if (groqResult.intent === 'navigate' && groqResult.destination) {
+        const destinationName = groqResult.destination.trim();
+        setSpokenDestinationName(destinationName);
         setAppMode('navigation');
         setAgentState('navigating');
         setIsThinking(false);
         
         await speakText(groqResult.response);
         
-        setVoiceIntentQuery(groqResult.destination.toLowerCase());
+        setVoiceIntentQuery(destinationName.toLowerCase());
         setCurrentNodeIndex(0);
         
       } else {
+        setSpokenDestinationName("");
         setAppMode('chat');
         setIsThinking(false);
         
@@ -409,6 +422,7 @@ RESPOND ONLY IN THIS JSON FORMAT:
     
     await speakText(arrivalMsg);
     
+    setSpokenDestinationName("");
     setAppMode('chat');
     setCurrentNodeIndex(-1);
     setVoiceIntentQuery("");
@@ -561,6 +575,7 @@ RESPOND ONLY IN THIS JSON FORMAT:
     clearSilenceTimer();
     setCurrentNodeIndex(-1);
     setVoiceIntentQuery("");
+    setSpokenDestinationName("");
     setIsOrbSpeaking(false);
     setIsThinking(false);
     setRewrittenDirection("");
@@ -593,6 +608,58 @@ RESPOND ONLY IN THIS JSON FORMAT:
 
   const fallbackPlaceholder = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1200";
 
+  const buildQrImageUrl = (content: string) => {
+    if (!content) return "";
+    return `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(content)}&size=220x220&margin=1`;
+  };
+
+  const normalizeQrMatch = (value: string) => (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+  const activeQrCode: { label: string; content: string; imageUrl: string } | null = (() => {
+    if (!buildingContext?.qrCodes) return null;
+
+    const hasActiveDestinationIntent = Boolean(spokenDestinationName || liveConvexRoute?.destination);
+    if (!hasActiveDestinationIntent && appMode !== 'navigation') return null;
+
+    const preferredDestination = spokenDestinationName || liveConvexRoute?.destination || "";
+
+    const destinationMatch = buildingContext.qrCodes.find((code: any) => {
+      if (code.entityType !== 'destination') return false;
+      return normalizeQrMatch(code.label) === normalizeQrMatch(preferredDestination);
+    });
+
+    if (destinationMatch) {
+      return {
+        label: destinationMatch.label,
+        content: destinationMatch.content,
+        imageUrl: buildQrImageUrl(destinationMatch.content),
+      };
+    }
+
+    if (activeSlideNode) {
+      const nodeMatch = buildingContext.qrCodes.find((code: any) =>
+        code.entityType === 'node' && normalizeQrMatch(code.label) === normalizeQrMatch(activeSlideNode.targetNodeLabel)
+      );
+
+      if (nodeMatch) {
+        return {
+          label: nodeMatch.label,
+          content: nodeMatch.content,
+          imageUrl: buildQrImageUrl(nodeMatch.content),
+        };
+      }
+    }
+
+    const fallback = buildingContext.qrCodes.find((code: any) => code.entityType === 'destination');
+    if (!fallback) return null;
+
+    return {
+      label: fallback.label,
+      content: fallback.content,
+      imageUrl: buildQrImageUrl(fallback.content),
+    };
+  })();
+
   if (!hasMounted) return <div className="min-h-screen w-full bg-zinc-950" />;
 
   return (
@@ -612,6 +679,22 @@ RESPOND ONLY IN THIS JSON FORMAT:
           LEFT PANEL: Voice Core + Controls
           ════════════════════════════════════════ */}
       <div className="w-1/2 h-full flex flex-col items-center justify-between p-10 bg-gradient-to-b from-zinc-950 to-zinc-900/40 border-r border-zinc-900 relative">
+        {activeQrCode && (
+          <div className="absolute bottom-4 left-4 z-30 flex items-end gap-3 rounded-2xl border border-cyan-500/20 bg-zinc-950/90 p-3 backdrop-blur-md shadow-2xl shadow-cyan-950/20">
+            <div className="flex h-24 w-24 items-center justify-center rounded-xl border border-zinc-800 bg-white p-2">
+              <img
+                src={activeQrCode.imageUrl || buildQrImageUrl(activeQrCode.content)}
+                alt={`${activeQrCode.label} QR code`}
+                className="h-full w-full object-cover"
+              />
+            </div>
+            <div className="flex max-w-[160px] flex-col gap-1">
+              <span className="text-[9px] font-mono uppercase tracking-[0.24em] text-cyan-400">Scan to continue</span>
+              <span className="text-xs font-semibold text-white">{activeQrCode.label}</span>
+              <span className="text-[10px] text-zinc-500">Open on your phone and continue from here.</span>
+            </div>
+          </div>
+        )}
         
         {/* Header */}
         <header className="w-full flex items-center justify-between z-20">
