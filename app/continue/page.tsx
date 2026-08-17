@@ -16,8 +16,10 @@ export default function ContinueRoutePage() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [scanStatus, setScanStatus] = useState('Scanning white QR markers...');
   const [scannerReady, setScannerReady] = useState(false);
+  const [voiceCue, setVoiceCue] = useState('Ready for directions.');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const barcodeDetectorRef = useRef<any>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const entityType = getQueryParam('entityType');
   const entityId = getQueryParam('entityId');
@@ -138,11 +140,35 @@ export default function ContinueRoutePage() {
     ? `Route ready · ${route.slides.length} steps`
     : 'Calculating best path...';
 
+  const voiceText = nextStep?.textDirection || nextStep?.description || `Continue toward ${destinationName}.`;
+  useEffect(() => {
+    if (!voiceText) return;
+    setVoiceCue(voiceText);
+  }, [voiceText]);
+
   const arrowRotation = nextStep?.textDirection?.toLowerCase().includes('left')
     ? '-45deg'
     : nextStep?.textDirection?.toLowerCase().includes('right')
       ? '45deg'
       : '0deg';
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!voiceCue || !('speechSynthesis' in window)) return;
+
+    const utterance = new SpeechSynthesisUtterance(voiceCue);
+    utterance.lang = 'en-US';
+    utterance.rate = 1;
+    utterance.pitch = 1.1;
+    utterance.volume = 0.7;
+
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, [voiceCue]);
 
   if (!mounted) {
     return <div className="min-h-screen bg-zinc-950" />;
@@ -181,6 +207,24 @@ export default function ContinueRoutePage() {
             </div>
           </div>
 
+          <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center">
+            <div className="relative flex h-24 w-24 items-center justify-center sm:h-28 sm:w-28">
+              <div className="absolute h-20 w-20 rounded-full border border-cyan-500/40 bg-cyan-500/10 sm:h-24 sm:w-24" />
+              <div
+                className="absolute h-14 w-3 rounded-full bg-cyan-400 shadow-[0_0_18px_rgba(34,211,238,0.8)] sm:h-16 sm:w-4"
+                style={{ transform: `rotate(${arrowRotation})` }}
+              />
+              <div
+                className="absolute h-9 w-9 border-l-4 border-b-4 border-cyan-400 sm:h-11 sm:w-11"
+                style={{ transform: `rotate(${arrowRotation}) translateY(-4px)` }}
+              />
+              <div
+                className="absolute h-6 w-6 border-b-4 border-cyan-300 sm:h-7 sm:w-7"
+                style={{ transform: `rotate(${arrowRotation})` }}
+              />
+            </div>
+          </div>
+
           <div className="absolute inset-x-0 bottom-0 p-3 sm:p-4">
             <div className="rounded-2xl border border-white/10 bg-black/55 p-3 shadow-2xl backdrop-blur-md sm:p-4">
               <div className="mb-2 flex items-center justify-between gap-2 text-[9px] font-mono uppercase tracking-[0.22em] text-zinc-300">
@@ -210,6 +254,7 @@ export default function ContinueRoutePage() {
               <span>{scannerReady ? 'Live' : 'Waiting'}</span>
             </div>
             <p className="text-xs text-zinc-100 sm:text-sm">{scanStatus}</p>
+            <p className="mt-1 text-[11px] text-cyan-200 sm:text-xs">AI voice: {voiceCue}</p>
           </div>
         </div>
 
