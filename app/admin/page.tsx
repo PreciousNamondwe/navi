@@ -20,7 +20,7 @@ interface NodePos {
 }
 
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<'floors' | 'nodes' | 'destinations' | 'connections'>('connections');
+  const [activeTab, setActiveTab] = useState<'floors' | 'nodes' | 'destinations' | 'connections' | 'qrCodes'>('connections');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const data = useQuery(api.admin.listAllData);
@@ -288,11 +288,63 @@ export default function AdminDashboard() {
     { key: 'nodes' as const, icon: MapPin, label: 'Nodes', count: data?.nodes?.length || 0 },
     { key: 'destinations' as const, icon: Compass, label: 'Destinations', count: data?.destinations?.length || 0 },
     { key: 'connections' as const, icon: Navigation, label: 'Graph', count: data?.connections?.length || 0 },
+    { key: 'qrCodes' as const, icon: Link2, label: 'QR Codes', count: data?.qrCodes?.length || 0 },
   ];
 
   const selectedNode = positions.find(p => p.id === selectedNodeId);
   const originPos = positions.find(p => p.id === connectingFrom);
   const isEditingConnection = Boolean(editingConnectionId);
+
+  const buildQrImageUrl = (content: string) => {
+    if (!content) return '';
+    return `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(content)}&size=1500x1500&margin=2`;
+  };
+
+  const downloadQrCard = async (code: any) => {
+    const qrUrl = buildQrImageUrl(code.content);
+    if (!qrUrl) return;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = 1400;
+    canvas.height = 1700;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const qrImage = new Image();
+    qrImage.crossOrigin = 'anonymous';
+    qrImage.onload = () => {
+      const margin = 180;
+      const qrSize = 900;
+      const x = (canvas.width - qrSize) / 2;
+      const y = 180;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x, y, qrSize, qrSize);
+      ctx.drawImage(qrImage, x, y, qrSize, qrSize);
+
+      ctx.fillStyle = '#111827';
+      ctx.font = '700 54px Arial';
+      ctx.textAlign = 'center';
+      const lines = code.label ? [code.label] : ['QR Code'];
+      const textY = 1280;
+      lines.forEach((line, index) => {
+        ctx.fillText(line, canvas.width / 2, textY + index * 62);
+      });
+
+      ctx.font = '500 30px Arial';
+      ctx.fillStyle = '#4b5563';
+      ctx.fillText(code.entityType?.toUpperCase() || 'DESTINATION', canvas.width / 2, 1420);
+
+      const link = document.createElement('a');
+      link.download = `${(code.label || 'qr-code').replace(/\s+/g, '-').toLowerCase()}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    };
+    qrImage.src = qrUrl;
+  };
 
   const startEditFloor = (floor: any) => {
     setEditingFloorId(floor._id);
@@ -409,6 +461,7 @@ export default function AdminDashboard() {
             {activeTab === 'nodes' && 'Waypoint Nodes'}
             {activeTab === 'destinations' && 'Destination Endpoints'}
             {activeTab === 'connections' && 'Graph Topology Editor'}
+            {activeTab === 'qrCodes' && 'QR Code Registry'}
           </h1>
           <div className="text-[10px] font-mono text-neutral-500">
             {data ? `${data.floors.length} floors · ${data.nodes.length} nodes · ${data.connections.length} edges` : 'Loading...'}
@@ -417,7 +470,51 @@ export default function AdminDashboard() {
 
         {/* Content */}
         <div className="flex-1 overflow-auto p-6">
-          {activeTab === 'connections' ? (
+          {activeTab === 'qrCodes' ? (
+            <div className="max-w-7xl mx-auto">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-cyan-400">Print-ready</p>
+                  <h2 className="text-base font-semibold text-white mt-1">QR labels for A4 printing</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => data?.qrCodes?.forEach((code: any) => downloadQrCard(code))}
+                  className="px-3 py-2 bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-bold rounded-md"
+                >
+                  Download all
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                {(data?.qrCodes || []).map((code: any) => (
+                  <div key={code._id} className="rounded-2xl border border-neutral-800 bg-white p-5 text-black shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-[10px] font-mono uppercase tracking-[0.26em] text-zinc-500">{code.entityType}</span>
+                      <button
+                        type="button"
+                        onClick={() => downloadQrCard(code)}
+                        className="px-2 py-1 bg-neutral-900 text-white text-[10px] font-bold rounded-md"
+                      >
+                        Download
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-center rounded-xl border border-zinc-200 bg-white p-4">
+                      <img
+                        src={buildQrImageUrl(code.content)}
+                        alt={`${code.label} QR code`}
+                        className="w-full max-w-[360px] aspect-square object-contain"
+                      />
+                    </div>
+                    <div className="mt-4 text-center">
+                      <p className="text-xl font-bold truncate text-black">{code.label}</p>
+                      <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-zinc-500 mt-2">Scan to continue</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : activeTab === 'connections' ? (
             <div className="h-full flex gap-4">
               {/* Canvas */}
               <div

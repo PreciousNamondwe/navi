@@ -150,6 +150,11 @@ export const deleteNode = mutation({
 
     const destinations = await ctx.db.query("destinations").filter((q) => q.eq(q.field("targetNodeId"), args._id)).collect();
     for (const destination of destinations) {
+      const qr = await ctx.db
+        .query("qrCodes")
+        .withIndex("by_entity", (q) => q.eq("entityType", "destination").eq("entityId", String(destination._id)))
+        .first();
+      if (qr) await ctx.db.delete(qr._id);
       await ctx.db.delete(destination._id);
     }
 
