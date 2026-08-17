@@ -203,76 +203,21 @@ export default function ContinueRoutePage() {
           </div>
         </div>
 
-        <div className="w-full border-t border-zinc-800 bg-zinc-950/95 p-3 sm:p-4">
-          <div className="mb-3 flex items-center gap-2 text-[9px] font-mono uppercase tracking-[0.25em] text-cyan-300 sm:text-[10px]">
-            <Sparkles className="h-3.5 w-3.5" />
-            Guided path
-          </div>
-
-          <div className="mb-3 rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-3 sm:p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-[9px] font-mono uppercase tracking-[0.22em] text-cyan-300 sm:text-[10px]">AR cue</p>
-              <Navigation className="h-4 w-4 text-cyan-300" />
-            </div>
-            <div className="mt-3 flex items-center justify-center">
-              <div className="relative flex h-20 w-20 items-center justify-center sm:h-24 sm:w-24">
-                <div className="absolute h-16 w-16 rounded-full border border-cyan-500/40 bg-cyan-500/10 sm:h-20 sm:w-20" />
-                <div
-                  className="absolute h-12 w-3 rounded-full bg-cyan-400 shadow-[0_0_18px_rgba(34,211,238,0.8)] sm:h-16 sm:w-4"
-                  style={{ transform: `rotate(${arrowRotation})` }}
-                />
-                <div
-                  className="absolute h-8 w-8 border-l-4 border-b-4 border-cyan-400 sm:h-10 sm:w-10"
-                  style={{ transform: `rotate(${arrowRotation}) translateY(-4px)` }}
-                />
-                <div
-                  className="absolute h-5 w-5 border-b-4 border-cyan-300 sm:h-6 sm:w-6"
-                  style={{ transform: `rotate(${arrowRotation})` }}
-                />
-              </div>
-            </div>
-            <p className="mt-2 text-center text-xs text-zinc-200 sm:text-sm">
-              {nextStep
-                ? `${nextStep.textDirection || nextStep.description || 'Follow the highlighted route.'}`
-                : 'Hold your phone steady, then follow the on-screen route guidance.'}
-            </p>
-          </div>
-
-          <div className="mb-3 rounded-xl border border-cyan-500/20 bg-zinc-900/80 p-2.5 sm:p-3">
-            <div className="flex items-center justify-between text-[8px] font-mono uppercase tracking-[0.18em] text-cyan-300 sm:text-[10px]">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 p-3 sm:p-4">
+          <div className="rounded-2xl border border-cyan-400/30 bg-black/45 p-3 shadow-[0_0_30px_rgba(34,211,238,0.18)] backdrop-blur-md sm:p-4">
+            <div className="mb-2 flex items-center justify-between gap-2 text-[8px] font-mono uppercase tracking-[0.2em] text-cyan-300 sm:text-[10px]">
               <span>Scanner</span>
               <span>{scannerReady ? 'Live' : 'Waiting'}</span>
             </div>
-            <p className="mt-2 text-xs text-zinc-200 sm:text-sm">{scanStatus}</p>
+            <p className="text-xs text-zinc-100 sm:text-sm">{scanStatus}</p>
           </div>
-
-          {route?.slides?.length ? (
-            <div className="space-y-2.5 sm:space-y-3">
-              {route.slides.slice(0, 3).map((step: any, index: number) => (
-                <div key={step.id || index} className="rounded-xl border border-zinc-800 bg-zinc-900/80 p-2.5 sm:p-3">
-                  <div className="mb-1.5 flex items-center justify-between text-[8px] font-mono uppercase tracking-[0.18em] text-zinc-500 sm:text-[10px]">
-                    <span>Step {index + 1}</span>
-                    <span>{step.walkingTime}s</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-white sm:text-sm">
-                    <ArrowRight className="h-3.5 w-3.5 text-cyan-300 sm:h-4 sm:w-4" />
-                    <span>{step.textDirection || step.description}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 p-3 text-xs text-zinc-400 sm:text-sm">
-              Calculating the best route to {destinationName}...
-            </div>
-          )}
-
-          {cameraError && (
-            <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-200 sm:text-sm">
-              {cameraError}
-            </div>
-          )}
         </div>
+
+        {cameraError && (
+          <div className="absolute inset-x-3 bottom-24 rounded-xl border border-amber-500/30 bg-amber-500/15 p-2.5 text-xs text-amber-100 backdrop-blur-sm sm:inset-x-auto sm:right-4 sm:bottom-4 sm:w-[320px]">
+            {cameraError}
+          </div>
+        )}
       </div>
     </div>
   );
