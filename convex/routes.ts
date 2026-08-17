@@ -14,7 +14,7 @@ export const getBuildingContext = query({
     const qrCodes = await ctx.db.query("qrCodes").collect();
 
     const buildQrContent = (entityType: "node" | "destination", entityId: string, label: string) =>
-      `https://navi.local/continue?entityType=${entityType}&entityId=${encodeURIComponent(entityId)}&label=${encodeURIComponent(label)}`;
+      `https://navi-mauve-mu.vercel.app/continue?entityType=${entityType}&entityId=${encodeURIComponent(entityId)}&label=${encodeURIComponent(label)}`;
     
     return {
       destinations: destinations.map((d) => ({

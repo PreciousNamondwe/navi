@@ -82,7 +82,7 @@ export const addNode = mutation({
       .first();
 
     if (!existing) {
-      const content = `https://navi.local/continue?entityType=node&entityId=${encodeURIComponent(String(nodeId))}&label=${encodeURIComponent(args.label)}`;
+      const content = `https://navi-mauve-mu.vercel.app/continue?entityType=node&entityId=${encodeURIComponent(String(nodeId))}&label=${encodeURIComponent(args.label)}`;
       await ctx.db.insert("qrCodes", {
         entityType: "node",
         entityId: String(nodeId),
@@ -127,7 +127,7 @@ export const updateNode = mutation({
     if (qrCode) {
       await ctx.db.patch(qrCode._id, {
         label: args.label,
-        content: `https://navi.local/continue?entityType=node&entityId=${encodeURIComponent(String(args._id))}&label=${encodeURIComponent(args.label)}`,
+        content: `https://navi-mauve-mu.vercel.app/continue?entityType=node&entityId=${encodeURIComponent(String(args._id))}&label=${encodeURIComponent(args.label)}`,
       });
     }
 
@@ -195,7 +195,7 @@ export const addDestination = mutation({
       .first();
 
     if (!existing) {
-      const content = `https://navi.local/continue?entityType=destination&entityId=${encodeURIComponent(String(destinationId))}&label=${encodeURIComponent(args.name)}`;
+      const content = `https://navi-mauve-mu.vercel.app/continue?entityType=destination&entityId=${encodeURIComponent(String(destinationId))}&label=${encodeURIComponent(args.name)}`;
       await ctx.db.insert("qrCodes", {
         entityType: "destination",
         entityId: String(destinationId),
@@ -235,7 +235,7 @@ export const updateDestination = mutation({
     if (qrCode) {
       await ctx.db.patch(qrCode._id, {
         label: args.name,
-        content: `https://navi.local/continue?entityType=destination&entityId=${encodeURIComponent(String(args._id))}&label=${encodeURIComponent(args.name)}`,
+        content: `https://navi-mauve-mu.vercel.app/continue?entityType=destination&entityId=${encodeURIComponent(String(args._id))}&label=${encodeURIComponent(args.name)}`,
       });
     }
 
@@ -332,7 +332,7 @@ export const ensureQrCodeRecords = mutation({
 
       if (existing) return;
 
-      const content = `https://navi.local/continue?entityType=${entityType}&entityId=${encodeURIComponent(entityId)}&label=${encodeURIComponent(label)}`;
+      const content = `https://navi-mauve-mu.vercel.app/continue?entityType=${entityType}&entityId=${encodeURIComponent(entityId)}&label=${encodeURIComponent(label)}`;
 
       await ctx.db.insert("qrCodes", {
         entityType,
